@@ -3,6 +3,11 @@
 
 int ls(char* parsed[], int x)
 {
+
+	scanf("%d", &x);
+	printf("%d\n", x);
+	return 0;
+
 	char dir[100];
  	dir[0] = '.';
  	dir[1] = '\0';
