@@ -5,7 +5,7 @@ int takeInput(char* str)
 { 
     char* buf; 
   	prompt();
-    buf = readline(" $ "); 
+    buf = readline(" $ ");
     if (strlen(buf) != 0) { 
         add_history(buf); 
         strcpy(str, buf); 
@@ -48,9 +48,8 @@ int processInRedirection(char *input)
 		while(*input == ' ')
 			input++;
 		int end = 0;
-		for(int i = 0;i<strlen(input);i++)
-			if(input[i] == ' ')
-				end = i;
+		for(int i = strlen(input)-1;i >= 0 && input[i] == ' ';i--)
+			end = i;
 		input[end] = '\0';
 		fd = open(input, O_RDONLY);
 		temp_fd = dup(0);
@@ -82,9 +81,8 @@ int processOutRedirection(char *input)
 		while(*input == ' ')
 			input++;
 		int end = 0;
-		for(int i = 0;i<strlen(input);i++)
-			if(input[i] == ' ')
-				end = i;
+		for(int i = strlen(input)-1;i >= 0 && input[i] == ' ';i--)
+			end = i;
 		input[end] = '\0';
 
 		if(flag)

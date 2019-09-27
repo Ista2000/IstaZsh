@@ -1,13 +1,11 @@
 #include "shell.h"
 #include "utils.c"
+#include "jobs.c"
+
+int fore = -1;
 
 int ls(char* parsed[], int x)
 {
-
-	scanf("%d", &x);
-	printf("%d\n", x);
-	return 0;
-
 	char dir[100];
  	dir[0] = '.';
  	dir[1] = '\0';
@@ -294,9 +292,21 @@ int nightswatch(char* parsed[], int x)
 	}
 }
 
+int kjob(char *parsed[], int n)
+{
+	if(n < 3)
+	{
+		printf("Invalid number of arguments.\n");
+		return 0;
+	}
+	int id = atoi(parsed[1]), sig = atoi(parsed[2]);
+	kill(arr[id-1], sig);
+	return 0;
+}
+
 int processCommand(char* parsed[], int n)
 {
-	int numCommands = 9;
+	int numCommands = 16;
 	char* commandList[numCommands];
 	commandList[0] = "cd";
 	commandList[1] = "pwd";
@@ -304,9 +314,16 @@ int processCommand(char* parsed[], int n)
 	commandList[3] = "ls";
 	commandList[4] = "pinfo";
 	commandList[5] = "clear";
-	commandList[6] = "exit";
+	commandList[6] = "quit";
 	commandList[7] = "history";
 	commandList[8] = "nightswatch";
+	commandList[9] = "jobs";
+	commandList[10] = "kjob";
+	commandList[11] = "overkill";
+	commandList[12] = "fg";
+	commandList[13] = "bg";
+	commandList[14] = "setenv";
+	commandList[15] = "unsetenv";
 	int matched = numCommands;
 	for(int i = 0;i < numCommands; i++)
 		if(strcmp(parsed[0], commandList[i]) == 0)
@@ -336,12 +353,57 @@ int processCommand(char* parsed[], int n)
 			clear();
 			break;
 		case 6:
+			for(int i = 0;i<sz;i++)
+				kill(arr[i], 9);
 			exit(0);
 		case 7: ;
 			history(parsed, x);
 			break;
 		case 8: ;
 			nightswatch(parsed, x);
+			break;
+		case 9: ;
+			print_all_jobs();
+			break;
+		case 10: ;
+			kjob(parsed, x);
+			break;
+		case 11: ;
+			for(int i = 0;i<sz;i++)
+				kill(arr[i], 9);
+			break;
+		case 12: ;
+			if(x != 2)
+				printf("Unexpected number of arguments\n");
+			else
+			{
+				int id = atoi(parsed[1]);
+				kill(arr[id-1], SIGCONT);
+				fore = arr[id-1];
+				waitpid(arr[id-1], NULL, WUNTRACED);
+				fore = -1;
+			}
+			break;
+		case 13: ;
+			if(x != 2)
+				printf("Unexpected number of arguments\n");
+			else
+			{
+				int id = atoi(parsed[1]);
+				kill(arr[id-1], SIGCONT);
+			}
+			break;
+		case 14: ;
+			if(x != 3)
+				printf("Unexpected number of arguments\n");
+			else
+				setenv(parsed[1], parsed[2], 1);
+			break;
+		case 15: ;
+			if(x != 2)
+				printf("Unexpected number of arguments\n");
+			else
+				unsetenv(parsed[1]);
 			break;
 		default:
 			return 1;
@@ -351,6 +413,12 @@ int processCommand(char* parsed[], int n)
 
 int processSystemCommands(char* parsed[], int n)
 {
+	int fd[2];
+	if(pipe(fd) == -1)
+	{
+		printf("Some error occured.\n");
+		return 1;
+	}
 	pid_t pid = fork();
 	if(pid < 0)
 	{
@@ -359,42 +427,14 @@ int processSystemCommands(char* parsed[], int n)
 	}
 	else if(pid == 0)
 	{
-		if(parsed[n-1][0] == '&' && strlen(parsed[n-1]) == 1)
-		{
-			pid_t pid2 = fork();
-			pid = getpid();
-			if(pid2 < 0)
-			{
-				printf("\nFailed creating a child fork\n");
-			}
-			else if(pid2 == 0)
-			{
-				if(execvp(parsed[0], parsed) < 0)
-					printf("\nThere was some error in executing the command\n");
-
-			}
-			else
-			{
-				int status;
-				waitpid(pid2, &status, 0);
-				if(status == 0)
-					printf("\nProcess %s with pid %d exited normally.", parsed[0], (int)pid);
-				else
-					printf("\nProcess %s with pid %d exited abnormally.", parsed[0], (int)pid);
-				prompt();
-				printf(" $ ");
-
-			}
-		}
-		else
-		{
-			if(execvp(parsed[0], parsed) < 0)
-					printf("There was some error in executing the command\n");
-		}
-		exit(0);
+		setpgid(0, 0);
+		if(execvp(parsed[0], parsed) < 0)
+			printf("There was some error in executing the command\n");
+		exit(1);
 	}
-	else	
+	else
 	{
+		push_job(pid);
 		if(parsed[n-1][0] == '&' && strlen(parsed[n-1]) == 1)
 		{
 			printf("\nProcess started with pid: %d\n", (int)pid);
@@ -402,10 +442,26 @@ int processSystemCommands(char* parsed[], int n)
 		else
 		{
 			int status;
-			waitpid(pid, &status, 0);
-			if(!status)
+			fore = pid;
+			waitpid(pid, &status, WUNTRACED);
+			if(WIFSTOPPED(status))
+				push_job(pid);
+			else if(!status)
 				printf("\nProcess %s with pid %d ended normally\n", parsed[0], (int)pid);
+			fore = -1;
 		}
 		return 0;
+	}
+}
+
+
+void sigint_handler(int sig)
+{
+	if(fore == -1)
+		signal(sig, SIG_IGN);
+	else
+	{
+		kill(fore, sig);
+		fore = -1;
 	}
 }
